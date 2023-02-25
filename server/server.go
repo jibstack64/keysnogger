@@ -38,6 +38,7 @@ var (
 func track(conn net.Conn) {
 	sucPr.Printf("[C] New client: %s.\n", conn.RemoteAddr().String())
 	log := "" // dump
+	connected := true
 	go func() {
 		for maintain {
 			data := make([]byte, BUFFER)
@@ -50,8 +51,9 @@ func track(conn net.Conn) {
 			}
 			conn.Write([]byte("Received :)"))
 		}
+		connected = false
 	}()
-	for maintain {
+	for maintain && connected {
 		time.Sleep(time.Second)
 	}
 	conn.Close()
